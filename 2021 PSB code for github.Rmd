@@ -1,0 +1,1859 @@
+---
+title: "2021 PSB networks"
+output: html_document
+---
+#Setting up and loading data
+```{r}
+library(ggplot2)
+library(bipartite)
+library(car)
+library(effectsize)
+library(pdp)
+library(randomForest)
+library(MASS)
+library(lme4)
+library(grid)
+library(gridExtra)
+library(ggpubr)
+library(viridis)
+library(tidyr)
+library(dplyr)
+library(effects)
+#install.packages("bipartite")
+```
+#Bumble Bee Body Conditions
+##load data
+```{r}
+data <- read.csv("bumble bee conditions.csv")
+data$length <- as.numeric(data$length)
+data$dry_mass <- as.numeric(data$dry_mass)
+data$wing_area <- as.numeric(data$wing_area)
+data$itd <- as.numeric(data$itd)
+data <- subset(data, data$include_in_analysis == "")
+data <- subset(data, data$sex == "f")
+data
+```
+
+##wing area
+```{r}
+ggplot(data = data, aes(x = Treatment, y = wing_area, fill = Treatment)) + geom_boxplot() + facet_wrap(~species) + xlab("") + ylab("Wing Area (mm^2)") + theme_bw() + theme(strip.text = element_text(face = "italic"), axis.text.x = element_blank()) + scale_fill_viridis_d(alpha = 0.5) + labs(fill = "Site Treatment")
+```
+
+```{r}
+subset(data, data$species == "B.bimaculatus")$age
+
+wing.bbim <- lm(wing_area ~ age + itd + Treatment, subset(data, data$species == "B.bimaculatus"))
+summary(wing.bbim)
+
+wing.bgri <- lm(wing_area ~ age + itd + Treatment, subset(data, data$species == "B.griseocollis"))
+summary(wing.bgri)
+
+wing.bimp <- lm(wing_area ~ age + itd + Treatment, subset(data, data$species == "B.impatiens"))
+summary(wing.bimp)
+```
+
+##Intertegular distance
+```{r}
+itd.bbim <- lm(itd ~ Treatment, subset(data, data$species == "B.bimaculatus"))
+summary(itd.bbim)
+
+itd.bgri <- lm(itd ~ Treatment, subset(data, data$species == "B.griseocollis"))
+summary(itd.bgri)
+
+itd.bimp <- lm(itd ~ Treatment, subset(data, data$species == "B.impatiens"))
+summary(itd.bimp)
+```
+
+##dry mass
+```{r}
+data$wdry_mass <- data$dry_mass
+plt1 <- data %>%
+group_by(Treatment) %>%
+mutate(wdry_mass = weighted.mean(dry_mass, itd)) %>%
+slice(1)
+
+dma.bbim <- lm(dry_mass ~ itd + Treatment, subset(data, data$species == "B.bimaculatus"))
+summary(dma.bbim)
+
+dma.bgri <- lm(dry_mass ~ itd + Treatment, subset(data, data$species == "B.griseocollis"))
+summary(dma.bgri)
+
+dma.bimp <- lm(dry_mass ~ itd + Treatment, subset(data, data$species == "B.impatiens"))
+summary(dma.bimp)
+```
+
+##Figure 7
+```{r}
+pmean.itd <- c(
+  predict(itd.bbim, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$fit, predict(itd.bgri, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$fit, predict(itd.bimp, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$fit)
+
+pse.itd <-c(0.245, 0.245, 0.130, 0.130, 0.191, 0.191) #hand transferred from lm summaries
+
+test <- c(
+  predict(itd.bbim, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$se.fit, predict(itd.bgri, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$se.fit, predict(itd.bimp, list(Treatment = c("Control", "Honey Bee")), se.fit=TRUE)$se.fit)
+
+#using median itd and age for each species
+pmean.wing <- c(
+  predict(dma.bbim, list(Treatment = c("Control", "Honey Bee"), itd = c(4.46, 4.46), age = c(15,15)), se.fit = TRUE)$fit, predict(dma.bgri, list(Treatment = c("Control", "Honey Bee"), itd = c(4.055, 4.055), age = c(53,53)), se.fit=TRUE)$fit, predict(dma.bimp, list(Treatment = c("Control", "Honey Bee"), itd = c(4.03,4.03), age = c(34,34)), se.fit=TRUE)$fit)
+
+pse.wing <-c(70.36,70.36, 62.75,62.75, 40.68,40.68) #hand transferred from lm summaries
+
+#using median itd for each species
+pmean.dma <- c(
+  predict(dma.bbim, list(Treatment = c("Control", "Honey Bee"), itd = c(4.46, 4.46)), se.fit = TRUE)$fit, predict(dma.bgri, list(Treatment = c("Control", "Honey Bee"), itd = c(4.055, 4.055)), se.fit=TRUE)$fit, predict(dma.bimp, list(Treatment = c("Control", "Honey Bee"), itd = c(4.03,4.03)), se.fit=TRUE)$fit)
+
+
+pse.dma <-c(0.007,0.007, 0.006,0.006, 0.006,0.006) #hand transferred from lm summaries
+
+species <- c("B.bimaculatus", "B.bimaculatus", "B.griseocollis", "B.griseocollis", "B.impatiens", "B.impatiens")
+
+Treatment <- c(rep(c("Control", "Honey Bee"), 3))
+
+datat <- data.frame(pmean.itd, pse.itd, pmean.wing, pse.wing, pmean.dma, pse.dma, species, Treatment)
+
+a <- ggplot(datat, aes(y = pmean.itd, x = Treatment, color = Treatment)) + geom_point(size = 2) + geom_errorbar(aes(ymin = pmean.itd - pse.itd, ymax = pmean.itd + pse.itd), lwd = 1, width = 0.5) + facet_wrap(~species) + scale_color_viridis_d(name = "Site Treatment") + theme_bw() + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), strip.text = element_text(face = "italic", size = 13), axis.title.y = element_text(size = 13), legend.text = element_text(size = 13), legend.title = element_text(size = 13)) + ylab("ITD (mm)")
+
+b <- ggplot(datat, aes(y = pmean.dma, x = Treatment, color = Treatment)) + geom_point(size = 2) + geom_errorbar(aes(ymin = pmean.dma - pse.dma, ymax = pmean.dma + pse.dma), lwd = 1, width = 0.5) + facet_wrap(~species) + scale_color_viridis_d() + theme_bw() + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), strip.text = element_blank(), axis.title.y = element_text(size = 13), legend.text = element_text(size = 13), legend.title = element_text(size = 13)) + ylab("Dry Mass (g)")
+
+c <- ggplot(datat, aes(y = pmean.wing, x = Treatment, color = Treatment)) + geom_point(size = 2) + geom_errorbar(aes(ymin = pmean.wing - pse.wing, ymax = pmean.wing + pse.wing), lwd = 1, width = 0.5) + facet_wrap(~species) + scale_color_viridis_d() + theme_bw() + theme(axis.title.x = element_blank(), axis.text.x = element_blank(), strip.text = element_blank(), axis.title.y = element_text(size = 13), legend.text = element_text(size = 13), legend.title = element_text(size = 13)) + ylab("Wing Area (mm^2)")
+
+ggarrange(a, b, c, ncol = 1, common.legend = TRUE, legend = "right")
+```
+
+#Apiary Analysis
+##honey bee observations (Figure 3)
+
+```{r}
+data <- read.csv("C:hb observation.csv") #sheet within "honey bee datasheets.xlsx"
+levels(data$month) <- c("June", "July", "Aug")
+data
+```
+
+```{r}
+a <- glm(hb.obs ~ avg.temp.c + avg.wind.ms + month.num + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+summary(a)
+
+a <- glm(hb.obs ~ avg.temp.c + avg.wind.ms + month.num + site.treatment + site.treatment, data = subset(data, data$day.treatment == "Day 1 (Open)"), family = poisson)
+summary(a)
+```
+
+
+```{r}
+ggplot(data, aes(y = hb.obs, x = paste(site.treatment, day.treatment))) + geom_point(aes(pch = day.treatment, group = paste(day.treatment, site.treatment), fill = site.treatment), size = 3, position = position_jitter(width = 0.2, height = 0.05), alpha = 0.3) + facet_wrap(~factor(month, levels = c("June", "July", "August"))) + scale_shape_manual(values=c(21,24), name = "Day Treatment") + scale_fill_viridis_d(name = "Site Treatment") + ylab("Observed Honey Bee Interactions") + xlab("") + theme_bw() + theme(axis.text.x = element_blank(), strip.text = element_text( size = 10)) + scale_y_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+```
+
+
+##Adult bee population (Figure 2)
+```{r}
+data <- read.csv("apiary population.csv") #sheet within "honey bee datasheets.xlsx"
+data <- data[1:4,]
+data
+```
+
+```{r}
+ggplot(data, aes(y = mean.pop.k, x = factor(Month, levels = c("June", "July", "August", "September")))) + geom_point(size = 2) + geom_path(aes(group = trmt)) + geom_errorbar(aes(y=mean.pop.k, ymin = (mean.pop.k-sd.pop.k), ymax = (mean.pop.k+sd.pop.k)), width = 0.1) + ylab("Estimated (Thousands)") + xlab("Month") + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(axis.text = element_text(size = 18), axis.title = element_text(size = 18), legend.text = element_text(size = 18), legend.title = element_text(size = 18))
+```
+
+
+##Honey Analysis
+
+```{r}
+honey <- read.csv("honey data.csv") # sheet within "honey bee datasheets.xlsx"
+honey$month <- factor(honey$month, levels = c("June", "July", "August", "September"))
+honey <- honey[1:20,]
+honey
+```
+
+```{r}
+ggplot(honey, aes(x = month, y = percent.100, fill = Group)) + geom_bar(position = "stack", stat = "identity") + ylab("Percent of Pollen Grains in Honey") + xlab("Month") +  scale_fill_viridis_d(begin = 0.2, name = "Pollen Types") + theme(axis.text = element_text(size = 12), axis.title = element_text(size = 16), legend.title = element_text(size = 16), legend.text = element_text(size = 12))
+```
+
+```{r}
+fisht <- read.csv("fisher.csv")
+fish <- fisht[1:5,2:5]
+dimnames(fish)[[1]] <- fisht[1:5,1]
+fish
+
+chisq.test(fish)$expected
+test <- fisher.test(fish, simulate.p.value = TRUE)
+test
+```
+
+#Abundance and Richness
+```{r}
+abri <- read.csv("abundance richness.csv") #page in the "wild bee datasheets.xlsx"
+abri <- abri[1:12,]
+abri
+```
+##contrast graph (Figure 5)
+```{r}
+#JUNE
+data = subset(abri, abri$month == 6)
+month.temp = "June"
+
+#wb abundance
+model <- glm(abund.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- data.frame(organism = rep("Wild Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1))))
+#wb richness
+model <- glm(rich.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Wild Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb abundance
+model <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb richness
+model <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+
+#JULY
+data = subset(abri, abri$month == 7)
+month.temp = "July"
+
+#wb abundance
+model <- glm(abund.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Wild Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#wb richness
+model <- glm(rich.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Wild Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb abundance
+model <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb richness
+model <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+
+#August
+data = subset(abri, abri$month == 8)
+month.temp = "August"
+
+#wb abundance
+model <- glm(abund.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Wild Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#wb richness
+model <- glm(rich.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Wild Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb abundance
+model <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Abundance", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+#bb richness
+model <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + site.treatment*day.treatment, data = data, family = poisson)
+em <- emmeans(model, c("site.treatment", "day.treatment"))
+data.con <- rbind(data.con, data.frame(organism = rep("Bumble Bee", 4), metric = rep("Richness", 4), month = rep(month.temp, 4),
+                   contrast(em, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))))
+
+data.con$contrast <- ifelse(data.con$contrast == "con op v cl", "Control Day 1 - Control Day 2", 
+                            ifelse(data.con$contrast == "hb op v cl", "Honey Bee Day 1 (Open) - Honey Bee Day 2 (Closed)", 
+                            ifelse(data.con$contrast == "con cl v hb cl", "Control Day 2 - Honey Bee Day 2 (Closed)", 
+                            ifelse(data.con$contrast == "con op v hb op", "Control Day 1 - Honey Bee Day 1 (Open)", "opps"))))
+
+data.con
+write.csv(data.con, "readout.csv")
+
+```
+
+```{r}
+data.conwb <- subset(data.con, data.con$organism == "Wild Bee")
+
+data.conwba <- subset(data.conwb, data.conwb$metric == "Abundance")
+a <- ggplot(data.conwba, aes(y = estimate, x = factor(data.conwba$contrast, levels = c("Control Day 1 - Control Day 2","Honey Bee Day 1 (Open) - Honey Bee Day 2 (Closed)","Control Day 2 - Honey Bee Day 2 (Closed)", "Control Day 1 - Honey Bee Day 1 (Open)")), color = contrast, group = month))  + facet_wrap(~factor(month, levels = c("June", "July", "August"))) + geom_errorbar(aes(ymin = estimate - SE, ymax = estimate + SE), width = 0.2, position = position_dodge(width = 0.5), lwd = 1) + scale_color_viridis_d(end = 0.98, name = "Site Treatment", labels = c("Control Day 2 v Honey Bee Day 2 (Closed)", "Control Day 1 v Control Day 2", "Control Day 1 v Honey Bee Day 1 (Open)", "Honey Bee Day 1 (Open) v Honey Bee Day 2 (Closed)")) + theme_bw() + scale_linetype_discrete(name = "Day Treatment") + xlab("Contrast Estimate + SE") +  theme(axis.text.x = element_blank(), axis.title = element_blank(), axis.ticks.x = element_blank()) + geom_vline(xintercept = 0) + ggtitle("Wild Bee Abundance") + geom_hline(yintercept = 0) + ylim(-1,1)
+
+data.conwbr <- subset(data.conwb, data.conwb$metric == "Richness")
+ggplot(data.conwbr, aes(y = estimate, x = factor(data.conwbr$contrast, levels = c("Control Day 1 - Control Day 2","Honey Bee Day 1 (Open) - Honey Bee Day 2 (Closed)","Control Day 2 - Honey Bee Day 2 (Closed)", "Control Day 1 - Honey Bee Day 1 (Open)")), color = contrast, group = month))  + facet_wrap(~factor(month, levels = c("June", "July", "August"))) + geom_errorbar(aes(ymin = estimate - SE, ymax = estimate + SE), width = 0.2, position = position_dodge(width = 0.5), lwd = 1) + scale_color_viridis_d(end = 0.98, name = "Site Treatment", labels = c("Control Day 2 v Honey Bee Day 2 (Closed)", "Control Day 1 v Control Day 2", "Control Day 1 v Honey Bee Day 1 (Open)", "Honey Bee Day 1 (Open) v Honey Bee Day 2 (Closed)")) + theme_bw()  + scale_linetype_discrete(name = "Day Treatment") + xlab("Contrast Estimate + SE") +  theme(axis.title = element_blank(), axis.text.x = element_text(hjust = 1, angle = 90), legend.position = "none") + geom_vline(xintercept = 0) + ggtitle("Wild Bee Richness") + geom_hline(yintercept = 0) + ylim(-1,1)
+
+figure <- ggarrange(a, b, ncol = 1, legend = "none")
+
+annotate_figure(figure, left = textGrob("Estimated Marginal Mean Contrasts", rot = 90))
+
+```
+##LINEAR MODEL wild bees (Table S5)
+
+```{r}
+abri <- read.csv("abundance richness.csv") #page in the "wild bee datasheets.xlsx"
+abri
+```
+
+```{r}
+
+#overall
+model.a <- glm(abund.wb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.a)
+
+model.r <- glm(rich.wb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.r)
+
+z_to_d(z = -2.67, n = 17)
+```
+
+```{r}
+wba <- ggplot(abri, aes(y = abund.wb, x = factor(day.treatment, levels = c("Open", "Closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("Bee Abundance") + xlab("") + facet_wrap(~Treatment) + ggtitle("Wild Bees")  + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+
+wbr <- ggplot(abri, aes(y = rich.wb, x = factor(day.treatment, levels = c("Open", "Closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("Species Richness") + xlab("")+ facet_wrap(~Treatment) + theme_bw() + theme(legend.position = "none")
+
+bba <- ggplot(abri, aes(y = abund.bb, x = factor(day.treatment, levels = c("Open", "Closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("") + xlab("") + facet_wrap(~Treatment) + ggtitle("Bumble Bees")  + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+
+bbr <- ggplot(abri, aes(y = rich.bb, x = factor(day.treatment, levels = c("Open", "Closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("") + xlab("") + facet_wrap(~Treatment) + theme_bw() + theme(legend.position = "none")
+
+ggarrange(wba, bba, wbr, bbr, ncol = 2, nrow = 2)
+
+```
+
+```{r}
+month.st <- c(6,7,8)
+trmt.st <- c("con", "hb")
+mean.ab <- c()
+sd.ab <- c()
+mean.rc <- c()
+sd.rc <- c()
+month <- c()
+Treatment <- c()
+
+for (i in 1:2){
+  for (j in 1:3){
+    temp1 <- subset(abri, abri$site.treatment == trmt.st[i])
+    temp2 <- subset(temp1$abund.wb, temp1$month == month.st[j])
+    temp3 <- subset(temp1$rich.wb, temp1$month == month.st[j])
+    
+    mean.ab <- c(mean.ab, mean(temp2))
+    sd.ab <- c(sd.ab, sd(temp2))
+    mean.rc <- c(mean.rc, mean(temp3))
+    sd.rc <- c(sd.rc, sd(temp3))
+    month <- c(month, month.st[j])
+    Treatment <- c(Treatment, trmt.st[i])
+  }
+}
+
+
+avgdata <- data.frame(month, Treatment, sd.ab, mean.ab, sd.rc, mean.rc)
+avgdata
+```
+
+##contrasts (table S6 & S7)
+```{r}
+abri <- read.csv("abundance richness.csv") #page in the "wild bee datasheets.xlsx"
+
+model.a <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.a)
+em.a <- emmeans(model.a, specs = c("site.treatment", "day.treatment"))
+em.a
+contrast(em.a, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+
+
+model.r <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.r)
+
+em.r <- emmeans(model.r, specs = c("site.treatment", "day.treatment"))
+em.r
+contrast(em.r, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+```
+
+```{r}
+##WILD BEES
+
+abri <- read.csv("abundance richness.csv") #page in the "wild bee datasheets.xlsx"
+abri <- subset(abri, abri$month == 8)
+
+model.a <- glm(abund.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+em.a <- emmeans(model.a, specs = c("site.treatment", "day.treatment"))
+em.a
+contrast(em.a, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+
+
+model.r <- glm(rich.wb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+
+em.r <- emmeans(model.r, specs = c("site.treatment", "day.treatment"))
+em.r
+contrast(em.r, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+```
+
+
+##effect size
+```{r}
+con1 <- subset(abri, abri$site.treatment == "con")
+conop <- subset(con1$abund.wb, con1$day.treatment == "Open")
+concl <- subset(con1$abund.wb, con1$day.treatment == "Closed")
+
+hb1 <- subset(abri, abri$site.treatment == "hb")
+hbop <- subset(hb1$abund.wb, hb1$day.treatment == "Open")
+hbcl <- subset(hb1$abund.wb, hb1$day.treatment == "Closed")
+
+ ( (mean(conop) - mean(concl)) / sqrt((var(conop)^2 + var(concl)^2)/2) )
+ ( (mean(hbop) - mean(hbcl)) / sqrt((var(hbop)^2 + var(hbcl)^2)/2) )
+ ( (mean(concl) - mean(hbcl)) / sqrt((var(concl)^2 + var(hbcl)^2)/2) )
+ ( (mean(conop) - mean(hbop)) / sqrt((var(conop)^2 + var(hbop)^2)/2) )
+
+
+#Richness
+con1 <- subset(abri, abri$site.treatment == "con")
+conop <- subset(con1$rich.wb, con1$day.treatment == "Open")
+concl <- subset(con1$rich.wb, con1$day.treatment == "Closed")
+
+hb1 <- subset(abri, abri$site.treatment == "hb")
+hbop <- subset(hb1$rich.wb, hb1$day.treatment == "Open")
+hbcl <- subset(hb1$rich.wb, hb1$day.treatment == "Closed")
+
+ ( (mean(conop) - mean(concl)) / sqrt((var(conop)^2 + var(concl)^2)/2) )
+ ( (mean(hbop) - mean(hbcl)) / sqrt((var(hbop)^2 + var(hbcl)^2)/2) )
+ ( (mean(concl) - mean(hbcl)) / sqrt((var(concl)^2 + var(hbcl)^2)/2) )
+ ( (mean(conop) - mean(hbop)) / sqrt((var(conop)^2 + var(hbop)^2)/2) )
+```
+
+```{r}
+##BUMBLE BEES
+
+abri <- read.csv("abundance richness.csv") #page in the "wild bee datasheets.xlsx"
+abri <- subset(abri, abri$month == 6)
+
+model.a <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.a)
+em.a <- emmeans(model.a, specs = c("site.treatment", "day.treatment"))
+em.a
+contrast(em.a, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+
+
+model.r <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+
+em.r <- emmeans(model.r, specs = c("site.treatment", "day.treatment"))
+em.r
+contrast(em.r, list("con op v cl" = c(-1,0,1,0),
+                     "hb op v cl" = c(0,-1,0,1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+```
+
+```{r}
+#Effect size
+con1 <- subset(abri, abri$site.treatment == "con")
+conop <- subset(con1$abund.bb, con1$day.treatment == "Open")
+concl <- subset(con1$abund.bb, con1$day.treatment == "Closed")
+
+hb1 <- subset(abri, abri$site.treatment == "hb")
+hbop <- subset(hb1$abund.bb, hb1$day.treatment == "Open")
+hbcl <- subset(hb1$abund.bb, hb1$day.treatment == "Closed")
+
+ ( (mean(concl) - mean(conop)) / sqrt((var(concl)^2 + var(conop)^2)/2) )
+ ( (mean(hbcl) - mean(hbop)) / sqrt((var(hbcl)^2 + var(hbop)^2)/2) )
+ ( (mean(concl) - mean(hbcl)) / sqrt((var(concl)^2 + var(hbcl)^2)/2) )
+ ( (mean(conop) - mean(hbop)) / sqrt((var(conop)^2 + var(hbop)^2)/2) )
+
+
+#Richness
+con1 <- subset(abri, abri$site.treatment == "con")
+conop <- subset(con1$rich.bb, con1$day.treatment == "Open")
+concl <- subset(con1$rich.bb, con1$day.treatment == "Closed")
+
+hb1 <- subset(abri, abri$site.treatment == "hb")
+hbop <- subset(hb1$rich.bb, hb1$day.treatment == "Open")
+hbcl <- subset(hb1$rich.bb, hb1$day.treatment == "Closed")
+
+ ( (mean(concl) - mean(conop)) / sqrt((var(concl)^2 + var(conop)^2)/2) )
+ ( (mean(hbcl) - mean(hbop)) / sqrt((var(hbcl)^2 + var(hbop)^2)/2) )
+ ( (mean(concl) - mean(hbcl)) / sqrt((var(concl)^2 + var(hbcl)^2)/2) )
+ ( (mean(conop) - mean(hbop)) / sqrt((var(conop)^2 + var(hbop)^2)/2) )
+```
+
+
+```{r}
+ggplot(avgdata.ab, aes(y = mean.ab, x = month, color = Treatment)) + geom_point() + geom_path(aes(group = Treatment)) + scale_fill_viridis_d(alpha = 0.5) + ylab("Wild Bee Abundance") + xlab("") + geom_errorbar(width = 0.1, aes(ymin = mean.ab - sd.ab, ymax = mean.ab + sd.ab)) + theme_bw()
+
+ggplot(avgdata.ab, aes(y = mean.rc, x = month, color = Treatment)) + geom_point() + geom_path(aes(group = Treatment)) + scale_fill_viridis_d(alpha = 0.5) + ylab("Wild Bee Richness") + xlab("") + geom_errorbar(width = 0.1, aes(ymin = mean.rc - sd.rc, ymax = mean.rc + sd.rc)) + theme_bw()
+```
+
+
+##LINEAR MODEL bb only
+
+```{r}
+
+
+#overall
+model.a <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.a)
+#partial(model.a, pred.var = c("day.treatment"), plot = TRUE)
+
+model.r <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+summary(model.r)
+#partial(model.r, pred.var = c("site.treatment"), plot = TRUE)
+
+ggplot(abri, aes(y = abund.bb, x = factor(day.treatment, levels = c("open", "closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("Bumble Bee Abundance") + xlab("") + facet_wrap(~Treatment)
+
+ggplot(abri, aes(y = rich.bb, x = factor(day.treatment, levels = c("open", "closed")), fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + ylab("Bumble Bee Richness") + xlab("")+ facet_wrap(~Treatment)
+
+z_to_d(z = -2.67, n = 17)
+
+```
+
+```{r}
+#separate by site
+abri.c <- subset(abri, abri$site.treatment == "con")
+
+model.ca <- glm(abundance ~ avg.temp.c + avg.wind.ms + month + day.treatment, data = abri.c, family = poisson)
+summary(model.ca)
+
+model.cr <- glm(richness ~ avg.temp.c + avg.wind.ms + month + day.treatment, data = abri.c, family = poisson)
+summary(model.cr)
+
+
+abri.hb <- subset(abri, abri$site.treatment == "hb")
+
+model.hba <- glm(abundance ~ avg.temp.c + avg.wind.ms + month + day.treatment, data = abri.hb, family = poisson)
+summary(model.hba)
+
+model.hbr <- glm(richness ~ avg.temp.c + avg.wind.ms + month + day.treatment, data = abri.hb, family = poisson)
+summary(model.hbr)
+
+```
+
+```{r}
+abri$Treatment = ifelse(abdiv$site.treatment == "hb", "Honey Bee", "Control")
+ggplot(data = abdiv, aes(x = factor(abri$day.treatment, levels = c("open", "closed")), y =abundance, fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + facet_wrap(~Treatment) + ylab("Wild Bee Abundance") + xlab("Colony Treatment")
+
+ggplot(data = abri, aes(x = factor(abri$day.treatment, levels = c("open", "closed")), y = richness, fill = Treatment)) + geom_boxplot() + scale_fill_viridis_d(alpha = 0.5) + facet_wrap(~Treatment) + ylab("Wild Bee Richness") + xlab("Colony Treatment")
+```
+
+```{r}
+model.a <- glm(abund.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+em.a <- emmeans(model.a, specs = c("site.treatment", "day.treatment"))
+em.a
+contrast(em.a, list("con cl v op" = c(1,0,-1,0),
+                     "hb cl v op" = c(0,1,0,-1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+
+
+model.r <- glm(rich.bb ~ avg.temp.c + avg.wind.ms + month + day.treatment + site.treatment + day.treatment*site.treatment, data = abri, family = poisson)
+
+em.r <- emmeans(model.r, specs = c("site.treatment", "day.treatment"))
+em.r
+contrast(em.r, list("con cl v op" = c(1,0,-1,0),
+                     "hb cl v op" = c(0,1,0,-1),
+                     "con cl v hb cl" = c(1,-1,0,0),
+                     "con op v hb op" = c(0,0,1,-1)))
+
+summary(model.r)
+```
+
+
+#Heatmap (Figure s2)
+
+```{r}
+#files within "heatmap csv"
+legendt<- read.csv("legend.csv")
+legendt
+legend <- as.matrix(legendt[,2:7])
+dimnames(legend)[[1]] <- legendt[,1]
+
+cont <- read.csv("conall.csv")
+con <- as.matrix(cont[,2:94])
+dimnames(con)[[1]] <- cont[,1]
+
+hbt <- read.csv("hball.csv")
+hb <- as.matrix(hbt[,2:94])
+dimnames(hb)[[1]] <- hbt[,1]
+```
+
+```{r}
+visweb(con, type = "none", clear = FALSE, circles = TRUE, boxes = FALSE, outerbox.border = TRUE)
+visweb(hb, type = "none", clear = FALSE, circles = TRUE, boxes = FALSE, outerbox.border = TRUE)
+
+#creating the correct sized circles for the legend
+visweb(legend, type = "none", clear = FALSE, circles = TRUE, boxes = FALSE, outerbox.border = TRUE, labsize = 1)
+
+```
+
+
+#Network Data Loading
+##data for site, month
+```{r}
+#files in "network csv" folder
+
+#sme
+
+sme6t <- read.csv("sme6.csv")
+sme6t
+sme6 <- as.matrix(sme6t[,2:19])
+dimnames(sme6)[[1]] <- sme6t[,1]
+
+sme7t <- read.csv("sme7.csv")
+sme7t
+sme7 <- as.matrix(sme7t[,2:28])
+dimnames(sme7)[[1]] <- sme7t[,1]
+
+sme8t <- read.csv("sme8.csv")
+sme8t
+sme8 <- as.matrix(sme8t[,2:33])
+dimnames(sme8)[[1]] <- sme8t[,1]
+
+#smi
+
+smi6t <- read.csv("smi6.csv")
+smi6t
+smi6 <- as.matrix(smi6t[,2:15])
+dimnames(smi6)[[1]] <- smi6t[,1]
+
+smi7t <- read.csv("smi7.csv")
+smi7t
+smi7 <- as.matrix(smi7t[,2:5])
+dimnames(smi7)[[1]] <- smi7t[,1]
+
+smi8t <- read.csv("smi8.csv")
+smi8t
+smi8 <- as.matrix(smi8t[,2:20])
+dimnames(smi8)[[1]] <- smi8t[,1] ##KATE LEFT OFF HERE
+
+#sto
+
+sto6t <- read.csv("sto6.csv")
+sto6t
+sto6 <- as.matrix(sto6t[,2:11])
+dimnames(sto6)[[1]] <- sto6t[,1]
+
+sto7t <- read.csv("sto7.csv")
+sto7t
+sto7 <- as.matrix(sto7t[,2:39])
+dimnames(sto7)[[1]] <- sto7t[,1]
+
+sto8t <- read.csv("sto8.csv")
+sto8t
+sto8 <- as.matrix(sto8t[,2:31])
+dimnames(sto8)[[1]] <- sto8t[,1]
+
+#gut
+
+gut6t <- read.csv("gut6.csv")
+gut6t
+gut6 <- as.matrix(gut6t[,2:22])
+dimnames(gut6)[[1]] <- gut6t[,1]
+
+gut7t <- read.csv("gut7.csv")
+gut7t
+gut7 <- as.matrix(gut7t[,2:19])
+dimnames(gut7)[[1]] <- gut7t[,1]
+
+gut8t <- read.csv("gut8.csv")
+gut8t
+gut8 <- as.matrix(gut8t[,2:20])
+dimnames(gut8)[[1]] <- gut8t[,1]
+
+#rho
+
+rho6t <- read.csv("rho6.csv")
+rho6t
+rho6 <- as.matrix(rho6t[,2:19])
+dimnames(rho6)[[1]] <- rho6t[,1]
+
+rho7t <- read.csv("rho7.csv")
+rho7t
+rho7 <- as.matrix(rho7t[,2:21])
+dimnames(rho7)[[1]] <- rho7t[,1]
+
+rho8t <- read.csv("rho8.csv")
+rho8t
+rho8 <- as.matrix(rho8t[,2:23])
+dimnames(rho8)[[1]] <- rho8t[,1]
+
+#who
+
+who6t <- read.csv("who6.csv")
+who6t
+who6 <- as.matrix(who6t[,2:16])
+dimnames(who6)[[1]] <- who6t[,1]
+
+who7t <- read.csv("who7.csv")
+who7t
+who7 <- as.matrix(who7t[,2:22])
+dimnames(who7)[[1]] <- who7t[,1]
+
+who8t <- read.csv("who8.csv")
+who8t
+who8 <- as.matrix(who8t[,2:14])
+dimnames(who8)[[1]] <- who8t[,1]
+```
+
+#Network analysis - RAW METRICS
+##Network plots by site, month
+
+
+```{r}
+                #sme
+
+net.values <- c(networklevel(sme6, index = "H2"),
+                networklevel(sme6, index = "NODF"),
+                networklevel(sme6, index = "links per species")*(nrow(sme6)+ncol(sme6))/nrow(sme6), #links per plant species
+                networklevel(sme6, index = "niche overlap"),
+                attributes(computeModules(sme6))[["likelihood"]],
+                
+                networklevel(sme7, index = "H2"),
+                networklevel(sme7, index = "NODF"),
+                networklevel(sme7, index = "links per species")*(nrow(sme7)+ncol(sme7))/nrow(sme7), #links per plant species
+                networklevel(sme7, index = "niche overlap"),
+                attributes(computeModules(sme7))[["likelihood"]],
+                
+                networklevel(sme8, index = "H2"),
+                networklevel(sme8, index = "NODF"),
+                networklevel(sme8, index = "links per species")*(nrow(sme8)+ncol(sme8))/nrow(sme8), #links per plant species
+                networklevel(sme8, index = "niche overlap"),
+                attributes(computeModules(sme8))[["likelihood"]],
+                
+                #Smi
+                
+                networklevel(smi6, index = "H2"),
+                networklevel(smi6, index = "NODF"),
+                networklevel(smi6, index = "links per species")*(nrow(smi6)+ncol(smi6))/nrow(smi6), #links per plant species
+                networklevel(smi6, index = "niche overlap"),
+                attributes(computeModules(smi6))[["likelihood"]],
+                
+                networklevel(smi7, index = "H2"),
+                networklevel(smi7, index = "NODF"),
+                networklevel(smi7, index = "links per species")*(nrow(smi7)+ncol(smi7))/nrow(smi7), #links per plant species
+                networklevel(smi7, index = "niche overlap"),
+                attributes(computeModules(smi7))[["likelihood"]],
+                
+                networklevel(smi8, index = "H2"),
+                networklevel(smi8, index = "NODF"),
+                networklevel(smi8, index = "links per species")*(nrow(smi8)+ncol(smi8))/nrow(smi8), #links per plant species
+                networklevel(smi8, index = "niche overlap"),
+                attributes(computeModules(smi8))[["likelihood"]],
+                
+                
+                #Sto
+                
+                networklevel(sto6, index = "H2"),
+                networklevel(sto6, index = "NODF"),
+                networklevel(sto6, index = "links per species")*(nrow(sto6)+ncol(sto6))/nrow(sto6), #links per plant species
+                networklevel(sto6, index = "niche overlap"),
+                attributes(computeModules(sto6))[["likelihood"]],
+                
+                networklevel(sto7, index = "H2"),
+                networklevel(sto7, index = "NODF"),
+                networklevel(sto7, index = "links per species")*(nrow(sto7)+ncol(sto7))/nrow(sto7), #links per plant species
+                networklevel(sto7, index = "niche overlap"),
+                attributes(computeModules(sto7))[["likelihood"]],
+                
+                networklevel(sto8, index = "H2"),
+                networklevel(sto8, index = "NODF"),
+                networklevel(sto8, index = "links per species")*(nrow(sto8)+ncol(sto8))/nrow(sto8), #links per plant species
+                networklevel(sto8, index = "niche overlap"),
+                attributes(computeModules(sto7))[["likelihood"]],
+                
+                #Who
+                
+                networklevel(who6, index = "H2"),
+                networklevel(who6, index = "NODF"),
+                networklevel(who6, index = "links per species")*(nrow(who6)+ncol(who6))/nrow(who6), #links per plant species
+                networklevel(who6, index = "niche overlap"),
+                attributes(computeModules(who6))[["likelihood"]],
+              
+                networklevel(who7, index = "H2"),
+                networklevel(who7, index = "NODF"),
+                networklevel(who7, index = "links per species")*(nrow(who7)+ncol(who7))/nrow(who7), #links per plant species
+                networklevel(who7, index = "niche overlap"),
+                attributes(computeModules(who7))[["likelihood"]],
+                
+                networklevel(who8, index = "H2"),
+                networklevel(who8, index = "NODF"),
+                networklevel(who8, index = "links per species")*(nrow(who8)+ncol(who8))/nrow(who8), #links per plant species
+                networklevel(who8, index = "niche overlap"),
+                attributes(computeModules(who8))[["likelihood"]],
+                
+                #Gut
+                
+                networklevel(gut6, index = "H2"),
+                networklevel(gut6, index = "NODF"),
+                networklevel(gut6, index = "links per species")*(nrow(gut6)+ncol(gut6))/nrow(gut6), #links per plant species
+                networklevel(gut6, index = "niche overlap"),
+                attributes(computeModules(gut6))[["likelihood"]],
+                
+                networklevel(gut7, index = "H2"),
+                networklevel(gut7, index = "NODF"),
+                networklevel(gut7, index = "links per species")*(nrow(gut7)+ncol(gut7))/nrow(gut7), #links per plant species
+                networklevel(gut7, index = "niche overlap"),
+                attributes(computeModules(gut6))[["likelihood"]],
+                
+                networklevel(gut8, index = "H2"),
+                networklevel(gut8, index = "NODF"),
+                networklevel(gut8, index = "links per species")*(nrow(gut8)+ncol(gut8))/nrow(gut8), #links per plant species
+                networklevel(gut8, index = "niche overlap"),
+                attributes(computeModules(gut6))[["likelihood"]],
+                
+                #Rho
+                
+                networklevel(rho6, index = "H2"),
+                networklevel(rho6, index = "NODF"),
+                networklevel(rho6, index = "links per species")*(nrow(rho6)+ncol(rho6))/nrow(rho6), #links per plant species
+                networklevel(rho6, index = "niche overlap"),
+                attributes(computeModules(rho6))[["likelihood"]],
+                
+                networklevel(rho7, index = "H2"),
+                networklevel(rho7, index = "NODF"),
+                networklevel(rho7, index = "links per species")*(nrow(rho7)+ncol(rho7))/nrow(rho7), #links per plant species
+                networklevel(rho7, index = "niche overlap"),
+                attributes(computeModules(rho7))[["likelihood"]],
+                
+                networklevel(rho8, index = "H2"),
+                networklevel(rho8, index = "NODF"),
+                networklevel(rho8, index = "links per species")*(nrow(rho8)+ncol(rho8))/nrow(rho8), #links per plant species
+                networklevel(rho8, index = "niche overlap"),
+                attributes(computeModules(rho8))[["likelihood"]]
+                
+                )
+
+
+net.site <- c(rep("sme", 18), rep("smi", 18), rep("sto", 18), rep("who", 18), rep("gut", 18), rep("rho", 18))
+net.sitetrmt <-c(rep("Control", 54), rep("Honey Bee", 54))
+net.month <- c(rep(c(rep(6,6), rep(7,6), rep(8,6)),6))
+net.metric <- c(rep(c("H2", "NODF", "Links per Plant Species", "Niche Overlap Bees", "Niche Overlap Plants", "Modularity (Q)"),18))
+net.pair <- c(rep("WHO-SME",18), rep("GUT-SMI", 18), rep("RHO-STO",18), rep("WHO-SME",18), rep("GUT-SMI",18), rep("RHO-STO",18))
+
+table <- data.frame(net.site, net.pair,net.sitetrmt, net.month, net.metric, net.values)
+table$net.month <- as.factor(table$net.month)
+table$net.pair <- as.factor(table$net.pair)
+#write.csv(table, "sitemonth network.csv")
+
+table <- read.csv("sitemonth network.csv")
+table
+```
+
+```{r}
+table <- read.csv("sitemonth network.csv")
+table
+
+ggplot(table, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + facet_wrap(~factor(net.metric, levels = c("Network-Level Specialization", "Weighted Nestedness", "Modularity", "Links per Plant Species", "Niche Overlap Bees", "Niche Overlap Plants")), scales = "free", ncol = 3) + scale_color_viridis_d(alpha = 0.5) + xlab("") + ylab("Raw Metric Value") + labs(lty = "Month", color = "Site Pair") + theme_bw()
+
+wilcox.test(subset(table$net.values, table$net.metric == "Network-Level Specialization" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Network-Level Specialization" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(table$net.values, table$net.metric == "Links per Plant Species" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Links per Plant Species" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(table$net.values, table$net.metric == "Niche Overlap Bees" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Niche Overlap Bees" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(table$net.values, table$net.metric == "Niche Overlap Plants" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Niche Overlap Plants" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(table$net.values, table$net.metric == "Weighted Nestedness" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Weighted Nestedness" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(table$net.values, table$net.metric == "Modularity" & table$net.sitetrmt == "Control"),
+       subset(table$net.values, table$net.metric == "Modularity" & table$net.sitetrmt == "Honey Bee"),
+       paired = TRUE)
+```
+
+```{r}
+table$Month <- table$net.month
+table$Value <- table$net.values
+table$Treatment <- table$net.sitetrmt
+table
+
+ggplot(table, aes(x = Treatment, y = Value, color = as.factor(Month))) + geom_boxplot(aes(group = Treatment)) + geom_point(aes(group = paste(Month, net.pair))) + geom_path(aes(lty = as.factor(Month), group = paste(Month, net.pair))) + facet_wrap(~factor(table$net.metric, levels=c("H2", "NODF", "Links per Bee Species", "Links per Plant Species", "Niche Overlap Bees", "Niche Overlap Plants")), scales = "free", ncol = 2)
+```
+
+###Network plots by site treatment and month
+```{r}
+plotweb(con6, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#C488CE", labsize = 1)
+plotweb(con7, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#C488CE", labsize = 1)
+plotweb(con8, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#C488CE", labsize = 1)
+
+plotweb(hb6, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#FFF07D", labsize = 1)
+plotweb(hb7, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#FFF07D", labsize = 1)
+plotweb(hb8, text.rot=90, empty = FALSE, ybig = 2.0, y.width.high = 0.03, y.width.low = 0.03, col.interaction = "#FFF07D", labsize = 1)
+
+#"#C488CE", "#FFF07D"
+```
+
+#NULL MODELS
+##site, month
+```{r}
+#Equation for null model efficiency
+keb.nulls <- function(net, metric1) {
+  zc = c()
+  pc = c()
+  
+  if (metric1 == "links per bee species"){
+    
+    metric = "links per species"
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(networklevel(net.b, index=metric))*(nrow(net.b) + ncol(net.b))/nrow(net.b)
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null <- unlist(sapply(nulls, networklevel, index=metric))*(nrow(net.b) + ncol(net.b))/nrow(net.b)
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+  }
+  if (metric1 == "links per plant species") {
+    
+    metric = "links per species"
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(networklevel(net.b, index=metric))*(nrow(net.b) + ncol(net.b))/ncol(net.b)
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null <- unlist(sapply(nulls, networklevel, index=metric))*(nrow(net.b) + ncol(net.b))/ncol(net.b)
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+  }
+  
+    if (metric1 == "niche overlap bees") {
+    metric = "niche overlap"
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- sapply(unlist(networklevel(net.b, index=metric)[1]), function(x) x[1])
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null1 <- sapply(sapply(nulls, networklevel, index=metric), function(x) x[1])
+    null <- c()
+    for (i in 1:length(null1)){
+      if(i %% 2 == 1){ #for odd values (bees are printed first)
+        null = c(null, null1[i])
+      }}
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+    }
+  
+    if (metric1 == "niche overlap plants") {
+    metric = "niche overlap"
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(networklevel(net.b, index=metric)[2])
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null1 <- sapply(sapply(nulls, networklevel, index=metric), function(x) x[1])
+    null <- c()
+    for (i in 1:length(null1)){
+      if(i %% 2 == 0){ #for even values (plants are printed second)
+        null = c(null, null1[i])
+      }}
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+  }
+  
+  if(metric1 == "modularity") {
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(attributes(computeModules(net))[["likelihood"]])
+    nulls <- nullmodel(net.b, N=100, method=1, autotransform="equiprobable")
+    null <- sapply(sapply(nulls, computeModules), function(x) x@likelihood)
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+  }
+  
+  if ((metric1 == "H2" | metric1 == "NODF")) {
+    metric = metric1
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(networklevel(net.b, index=metric))
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null <- unlist(sapply(nulls, networklevel, index=metric))
+    praw <- sum(null>obs) / length(null)
+    pc <- c(pc, ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c(zc, (obs - mean(null)) / sd(null)) #Z-score
+  }
+  
+  return(c(zc, pc))
+}
+
+#alphabetical hb, then con
+#gut, rho, who,  sme, smi, sto,
+
+psbnull <- function(metric){
+  
+  pc.nodf <- c(keb.nulls(gut6, metric),
+               keb.nulls(gut7, metric),
+               keb.nulls(gut8, metric),
+             
+               keb.nulls(rho6, metric),
+               keb.nulls(rho7, metric),
+               keb.nulls(rho8, metric),
+             
+               #keb.nulls(who6, metric), #too few plant species to run
+               keb.nulls(who7, metric),
+               keb.nulls(who8, metric),
+               
+               keb.nulls(sme6, metric),
+               keb.nulls(sme7, metric),
+               keb.nulls(sme8, metric),
+               
+               keb.nulls(smi6, metric),
+               keb.nulls(smi7, metric),
+               keb.nulls(smi8, metric),
+               
+               keb.nulls(sto6, metric),
+               keb.nulls(sto7, metric),
+               keb.nulls(sto8, metric))
+  }
+
+```
+
+```{r}
+
+#H2
+    net = sto6
+    metric = "H2"
+    
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(networklevel(net, index=metric))
+    nulls <- nullmodel(net, N=100, method=1, autotransform="equiprobable")
+    null <- unlist(sapply(nulls, networklevel, index=metric))
+    praw <- sum(null>obs) / length(null)
+    pc <-  c(ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <-  c((obs - mean(null)) / sd(null))
+    
+#Modularity
+    net = sto6
+    
+    net.b <- ifelse(net == 0, 0, 1)
+    obs <- unlist(attributes(computeModules(net))[["likelihood"]])
+    nulls <- nullmodel(net.b, N=100, method=1, autotransform="equiprobable")
+    null <- sapply(sapply(nulls, computeModules), function(x) x@likelihood)
+    praw <- sum(null>obs) / length(null)
+    pc <- c(ifelse(praw > 0.5, 1-praw, praw))    # P-value
+    zc <- c((obs - mean(null)) / sd(null)) #Z-score
+    
+  
+```
+
+```{r}
+#alphabetical hb, then con
+#gut, rho, who,  sme, smi, sto,
+
+res = c(psbnull("NODF"),
+        psbnull("H2"),
+        psbnull("links per plant species"), 
+        psbnull("modularity"), 
+        psbnull("niche overlap bees"),
+        psbnull("niche overlap plants"))
+
+zval = c()
+pval = c()
+
+for (i in 1:length(res)) {
+  if(i %%2 == 0) {
+     pval = c(pval, res[i])
+  } else {
+     zval = c(zval, res[i]) 
+  }
+}
+
+site = rep(c(rep("gut", 3), rep("rho", 3), rep("who", 2),
+        rep("sme", 3), rep("smi", 3), rep("sto",3)), 6)
+month = rep(c("6", "7", "8", "6", "7", "8", "7", "8",
+              "6", "7", "8", "6", "7", "8", "6", "7", "8"),6)
+metric = c(rep("NODF", 17), rep("H2", 17), 
+           rep("links per plant species", 17),
+           rep("modularity", 17),
+           rep("niche overlap bees", 17), 
+           rep("niche overlap plants", 17))
+trmt = rep(c(rep("hb", 8), rep("con", 9)), 6)
+
+data = data.frame(site, month, metric, trmt, pval, zval)
+     
+#write.csv(data, "psb null models.csv")
+```
+
+```{r}
+data <- read.csv("psb null models.csv")
+data$Treatment <- data$trmt
+
+ggplot(data, aes(x = as.factor(month), y = pval, color = Treatment)) + geom_point(alpha = 0.5) + facet_wrap(~metric) + geom_hline(yintercept = 0.05, lty = 2)+ ylab("P-Value") + xlab("Month")
+
+ggplot(data, aes(x = as.factor(month), y = zval, color = Treatment)) + geom_point(alpha = 0.5) + facet_wrap(~metric) + ylab("Z-Value") + xlab("Month")
+```
+
+
+#Rarefied matched pairs
+##Rarefaction function
+```{r}
+rcrare <- function(x, r, c, ind) {
+ test <- vector(mode = "numeric", length =  1000)
+ ComLoop <- vector(mode = "numeric", length =  1000)
+  
+ #H2 & NODF --- H2 & NODF --- H2 & NODF
+ if((ind == "H2") | (ind == "NODF")){
+   ind2 = 0
+   #create rarefied networks
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }
+    }
+  }
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){
+  test[[i]] <- networklevel(m1, index = ind) #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+}}}}
+ 
+ #LINKS PER BEE SPECIES --- LINKS PER BEE SPECIES --- LINKS PER BEE SPECIES
+ 
+  if(ind == "links per bee species"){
+    ind2 = "links per species"
+#create rarefied networks
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }
+    }
+  }
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){
+  test[[i]] <- networklevel(m1, index = ind2)*(nrow(m1) + ncol(m1))/nrow(m1) #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+  }}}}
+   
+ #LINKS PER PLANT SPECIES --- LINKS PER PLANT SPECIES --- LINKS PER PLANT SPECIES
+  if(ind == "links per plant species"){
+    ind2 = "links per species"
+    
+    #create rarefied networks
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }}}
+
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){ #calculate metric up to 10 times to try to make it not NA
+  test[[i]] <- networklevel(m1, index = ind2)*(nrow(m1) + ncol(m1))/ncol(m1) #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+  }}}}
+ 
+ #NICHE OVERLAP BEES --- NICHE OVERLAP BEES --- NICHE OVERLAP BEES
+   if(ind == "niche overlap bees"){
+     ind2 = "niche overlap"
+    #create rarefied networks
+
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }}}
+
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){ #calculate metric up to 10 times to try to make it not NA
+  test[[i]] <- networklevel(m1, index = ind2)[1] #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+  }}}}
+ 
+  #NICHE OVERLAP PLANTS --- NICHE OVERLAP PLANTS --- NICHE OVERLAP PLANTS
+   if(ind == "niche overlap plants"){
+     ind2 = "niche overlap"
+    #create rarefied networks
+
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+   #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }}}
+
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){ #calculate metric up to 10 times to try to make it not NA
+  test[[i]] <- networklevel(m1, index = ind2)[2] #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+  }}}}
+ 
+ #MODULARITY --- MODULARITY -- MODULARITY
+    if(ind == "modularity"){
+      ind2 = 0
+    #create rarefied networks
+
+ for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  #rarefy the networks until all columns have at least one interaction
+  fullcol = c-1
+  while(fullcol < c) {
+    m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    fullcol = 0
+    for(j in 1:c) {
+    if (sum(m1[,j]) > 0) {
+      fullcol = fullcol + 1
+    }}}
+
+  #calculate metric up to 10 times to try to make it not NA
+  for (j in 1:10){ #calculate metric up to 10 times to try to make it not NA
+  test[[i]] <- attributes(computeModules(m1))[["likelihood"]] #calculate network metric so it is not NA
+  if(!is.na(test[[i]])) { #if it isn't NA, then stop repeating. it has 10 chances
+    break
+  }}}}
+ 
+ return(test)
+}
+```
+
+```{r} 
+#OG Version
+rcrare <- function(x, r, c, ind) {
+ test <- vector(mode = "numeric", length =  1000)
+ ComLoop <- vector(mode = "numeric", length =  1000)
+  for(i in seq_along(ComLoop)) {
+  m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+  
+  for(j in 1:c) {
+    while(sum(m1[,j]) == 0) {
+      m1 <- x[sample(x = seq_len(nrow(x)), size = r, replace = FALSE), sample(x = seq_len(ncol(x)), size = c, replace = FALSE)]
+    }
+  }
+  
+  test[[i]] <- networklevel(m1, index = ind)
+  }
+ for(j in 1:length(test)) {
+   ifelse(is.na(test[[j]]), networklevel(x[sample(x = seq_len(nrow(x)), size = r), sample(x = seq_len(ncol(x)), size = c)], index = ind), test[[j]])
+ }
+ return(test)
+}
+```
+
+##site, month
+```{r}
+#pairs are rho/sto, gut/smi, who/sme
+#going to standardize site between pairs, month
+
+
+rho6t #12x19
+sto6t #7x11  WINNER 7x11
+
+rho7t #15x21
+sto7t #12x39   WINNER 12x21
+
+rho8t #20x23
+sto8t #20x31   WINNER 20x31
+
+
+gut6t #15x22
+smi6t #8x15    WINNER 8x15
+
+gut7t #23x19
+smi7t #5x5   WINNER 5x5   --Or drop if it's too small for now
+
+gut8t #21x20
+smi8t #19x20  WINNER 19x20
+
+
+who6t #3x16
+sme6t #10x19 WINNER 3x16   --or drop if its too small for now
+
+who7t #18x22
+sme7t #26x28 WINNER 18x22
+
+who8t #14x14
+sme8t #27x33 WINNER 14x14
+```
+
+```{r}
+#averaged results
+
+#rho/sto  7x11  12x21  20x31
+net.values <- c(mean(rcrare(rho6, 7,10, "NODF")),
+                mean(rcrare(rho6, 7,10, "links per species")),
+                mean(rcrare(rho6, 7,10, "H2")),
+                
+                mean(rcrare(sto6, 7,10, "NODF")),
+                mean(rcrare(sto6, 7,10, "links per species")),
+                mean(rcrare(sto6, 7,10, "H2")),
+                
+                mean(rcrare(rho7, 11,20, "NODF")),
+                mean(rcrare(rho7, 11,20, "links per species")),
+                mean(rcrare(rho7, 11,20, "H2")),
+                
+                mean(rcrare(sto7, 11,20, "NODF")),
+                mean(rcrare(sto7, 11,20, "links per species")),
+                mean(rcrare(sto7, 11,20, "H2")),
+                
+                mean(rcrare(rho8, 20,21, "NODF")),
+                mean(rcrare(rho8, 20,21, "links per species")),
+                mean(rcrare(rho8, 20,21, "H2")),
+                
+                mean(rcrare(sto8, 20,21, "NODF")),
+                mean(rcrare(sto8, 20,21, "links per species")),
+                mean(rcrare(sto8, 20,21, "H2")),
+                
+                #gut/smi  8x15   5x5   19x20
+                
+                mean(rcrare(gut6, 7,14, "NODF")),
+                mean(rcrare(gut6, 7,14, "links per species")),
+                mean(rcrare(gut6, 7,14, "H2")),
+                
+                mean(rcrare(smi6, 7,14, "NODF")),
+                mean(rcrare(smi6, 7,14, "links per species")),
+                mean(rcrare(smi6, 7,14, "H2")),
+                
+                NA,
+                NA,
+                NA,
+                
+                NA,
+                NA,
+                NA,
+
+                mean(rcrare(gut8, 18,19, "NODF")),
+                mean(rcrare(gut8, 18,19, "links per species")),
+                mean(rcrare(gut8, 18,19, "H2")),
+                
+                mean(rcrare(smi8, 18,19, "NODF")),
+                mean(rcrare(smi8, 18,19, "links per species")),
+                mean(rcrare(smi8, 18,19, "H2")),
+                
+                #who/sme  3x16  18x22  14x14
+                
+                NA,
+                NA,
+                NA,
+                
+                NA,
+                NA,
+                NA,
+                
+                mean(rcrare(who7, 17,21, "NODF")),
+                mean(rcrare(who7, 17,21, "links per species")),
+                mean(rcrare(who7, 17,21, "H2")),
+                
+                mean(rcrare(sme7, 17,21, "NODF")),
+                mean(rcrare(sme7, 17,21, "links per species")),
+                mean(rcrare(sme7, 17,21, "H2")),
+                
+                mean(rcrare(who8, 13,13, "NODF")),
+                mean(rcrare(who8, 13,13, "links per species")),
+                mean(rcrare(who8, 13,13, "H2")),
+                
+                mean(rcrare(sme8, 13,13, "NODF")),
+                mean(rcrare(sme8, 13,13, "links per species")),
+                mean(rcrare(sme8, 13,13, "H2")))
+
+
+net.site <- c(rep(c(rep("rho", 3), rep("sto", 3)), 3),
+              rep(c(rep("gut", 3), rep("smi", 3)), 3),
+              rep(c(rep("who", 3), rep("sme", 3)), 3))
+
+net.pair <- c(rep(1,18), rep(2,18), rep(3,18))
+
+net.metric <- c(rep(c(rep(c("NODF", "links per species", "H2"), 6)), 3))
+
+net.month <- c(rep(c(rep(6,6), rep(7,6), rep(8,6)), 3))
+
+net.trmt <- c(rep(c(rep("hb", 3), rep("con",3)),9))
+
+              
+table <- data.frame(net.values, net.site, net.pair, net.trmt, net.metric, net.month)
+
+table$net.pair <- as.factor(table$net.pair)
+table$net.month <- as.factor(table$net.month)
+                
+```
+
+```{r}
+#rho/sto  7x11  12x21  20x31
+
+net.values <- c((rcrare(rho6, 7,10, "NODF")),
+                (rcrare(rho6, 7,10, "links per plant species")), #plant sp
+                (rcrare(rho6, 7,10, "H2")),
+                (rcrare(rho6, 7,10, "modularity")),
+                (rcrare(rho6, 7,10, "niche overlap bees")),
+                (rcrare(rho6, 7,10, "niche overlap plants")),
+                
+                (rcrare(sto6, 7,10, "NODF")),
+                (rcrare(sto6, 7,10, "links per plant species")),
+                (rcrare(sto6, 7,10, "H2")),
+                (rcrare(sto6, 7,10, "modularity")),
+                (rcrare(sto6, 7,10, "niche overlap bees")),
+                (rcrare(sto6, 7,10, "niche overlap plants")),
+                
+                (rcrare(rho7, 11,20, "NODF")),
+                (rcrare(rho7, 11,20, "links per plant species")),
+                (rcrare(rho7, 11,20, "H2")),
+                (rcrare(rho7, 11,20, "modularity")),
+                (rcrare(rho7, 11,20, "niche overlap bees")),
+                (rcrare(rho7, 11,20, "niche overlap plants")),
+                
+                (rcrare(sto7, 11,20, "NODF")),
+                (rcrare(sto7, 11,20, "links per plant species")),
+                (rcrare(sto7, 11,20, "H2")),
+                (rcrare(sto7, 11,20, "modularity")),
+                (rcrare(sto7, 11,20, "niche overlap bees")),
+                (rcrare(sto7, 11,20, "niche overlap plants")),
+                
+                (rcrare(rho8, 20,21, "NODF")),
+                (rcrare(rho8, 20,21, "links per plant species")),
+                (rcrare(rho8, 20,21, "H2")),
+                (rcrare(rho8, 20,21, "modularity")),
+                (rcrare(rho8, 20,21, "niche overlap bees")),
+                (rcrare(rho8, 20,21, "niche overlap plants")),
+                
+                (rcrare(sto8, 20,21, "NODF")),
+                (rcrare(sto8, 20,21, "links per plant species")),
+                (rcrare(sto8, 20,21, "H2")),
+                (rcrare(sto8, 20,21, "modularity")),
+                (rcrare(sto8, 20,21, "niche overlap bees")),
+                (rcrare(sto8, 20,21, "niche overlap plants")),
+                
+                #gut/smi  8x15   5x5   19x20
+                
+                (rcrare(gut6, 7,14, "NODF")),
+                (rcrare(gut6, 7,14, "links per plant species")),
+                (rcrare(gut6, 7,14, "H2")),
+                (rcrare(gut6, 7,14, "modularity")),
+                (rcrare(gut6, 7,14, "niche overlap bees")),
+                (rcrare(gut6, 7,14, "niche overlap plants")),
+                
+                (rcrare(smi6, 7,14, "NODF")),
+                (rcrare(smi6, 7,14, "links per plant species")),
+                (rcrare(smi6, 7,14, "H2")),
+                (rcrare(smi6, 7,14, "modularity")),
+                (rcrare(smi6, 7,14, "niche overlap bees")),
+                (rcrare(smi6, 7,14, "niche overlap plants")),
+                
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+
+                (rcrare(gut8, 18,19, "NODF")),
+                (rcrare(gut8, 18,19, "links per plant species")),
+                (rcrare(gut8, 18,19, "H2")),
+                (rcrare(gut8, 18,19, "modularity")),
+                (rcrare(gut8, 18,19, "niche overlap bees")),
+                (rcrare(gut8, 18,19, "niche overlap plants")),
+                
+                (rcrare(smi8, 18,19, "NODF")),
+                (rcrare(smi8, 18,19, "links per plant species")),
+                (rcrare(smi8, 18,19, "H2")),
+                (rcrare(smi8, 18,19, "modularity")),
+                (rcrare(smi8, 18,19, "niche overlap bees")),
+                (rcrare(smi8, 18,19, "niche overlap plants")),
+                
+                #who/sme  3x16  18x22  14x14
+                
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                rep(NA, 1000),
+                
+                (rcrare(who7, 17,21, "NODF")),
+                (rcrare(who7, 17,21, "links per plant species")),
+                (rcrare(who7, 17,21, "H2")),
+                (rcrare(who7, 17,21, "modularity")),
+                (rcrare(who7, 17,21, "niche overlap bees")),
+                (rcrare(who7, 17,21, "niche overlap plants")),
+                
+                (rcrare(sme7, 17,21, "NODF")),
+                (rcrare(sme7, 17,21, "links per plant species")),
+                (rcrare(sme7, 17,21, "H2")),
+                (rcrare(sme7, 17,21, "modularity")),
+                (rcrare(sme7, 17,21, "niche overlap bees")),
+                (rcrare(sme7, 17,21, "niche overlap plants")),
+                
+                (rcrare(who8, 13,13, "NODF")),
+                (rcrare(who8, 13,13, "links per plant species")),
+                (rcrare(who8, 13,13, "H2")),
+                (rcrare(who8, 13,13, "modularity")),
+                (rcrare(who8, 13,13, "niche overlap bees")),
+                (rcrare(who8, 13,13, "niche overlap plants")),
+                
+                (rcrare(sme8, 13,13, "NODF")),
+                (rcrare(sme8, 13,13, "links per plant species")),
+                (rcrare(sme8, 13,13, "H2")),
+                (rcrare(sme8, 13,13, "modularity")),
+                (rcrare(sme8, 13,13, "niche overlap bees")),
+                (rcrare(sme8, 13,13, "niche overlap plants")))
+
+
+net.site <- c(rep(c(rep("rho", 6000), rep("sto", 6000)), 3),
+              rep(c(rep("gut", 6000), rep("smi", 6000)), 3),
+              rep(c(rep("who", 6000), rep("sme", 6000)), 3))
+
+net.pair <- c(rep(1,36000), rep(2,36000), rep(3,36000))
+
+net.metric <- c(rep(c(rep(c("NODF", "Links per Plant Species", "H2", "Modularity", "Niche Overlap Bees", "Niche Overlap Plants"), 6000)), 3))
+
+net.month <- c(rep(c(rep(6,12000), rep(7,12000), rep(8,12000)), 3))
+
+net.trmt <- c(rep(c(rep("hb", 6000), rep("con",6000)),9))
+
+              
+table <- data.frame(net.values, net.site, net.pair, net.trmt, net.metric, net.month)
+
+table$net.pair <- as.factor(table$net.pair)
+table$net.month <- as.factor(table$net.month)
+
+#write.csv(table, "sitemonth rarefied.csv")
+table
+```
+
+```{r}
+table <- read.csv("sitemonth rarefied.csv")
+
+table$net.pair <- as.factor(table$net.pair)
+table$net.month <- as.factor(table$net.month)
+
+ggplot(table, aes(x = net.trmt, y = as.numeric(net.values), color = net.trmt))  +geom_boxplot() + geom_point() + facet_wrap(~net.metric, scales = "free")
+```
+
+```{r}
+
+avg.values <- c((mean(na.omit(rcrare(rho6, 7,10, "NODF")))),
+                (mean(na.omit(rcrare(rho6, 7,10, "links per plant species")))), #plant sp
+                (mean(na.omit(rcrare(rho6, 7,10, "H2")))),
+                (mean(na.omit(rcrare(rho6, 7,10, "modularity")))),
+                (mean(na.omit(rcrare(rho6, 7,10, "niche overlap bees")))),
+                (mean(na.omit(rcrare(rho6, 7,10, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(sto6, 7,10, "NODF")))),
+                (mean(na.omit(rcrare(sto6, 7,10, "links per plant species")))),
+                (mean(na.omit(rcrare(sto6, 7,10, "H2")))),
+                (mean(na.omit(rcrare(sto6, 7,10, "modularity")))),
+                (mean(na.omit(rcrare(sto6, 7,10, "niche overlap bees")))),
+                (mean(na.omit(rcrare(sto6, 7,10, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(rho7, 11,20, "NODF")))),
+                (mean(na.omit(rcrare(rho7, 11,20, "links per plant species")))),
+                (mean(na.omit(rcrare(rho7, 11,20, "H2")))),
+                (mean(na.omit(rcrare(rho7, 11,20, "modularity")))),
+                (mean(na.omit(rcrare(rho7, 11,20, "niche overlap bees")))),
+                (mean(na.omit(rcrare(rho7, 11,20, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(sto7, 11,20, "NODF")))),
+                (mean(na.omit(rcrare(sto7, 11,20, "links per plant species")))),
+                (mean(na.omit(rcrare(sto7, 11,20, "H2")))),
+                (mean(na.omit(rcrare(sto7, 11,20, "modularity")))),
+                (mean(na.omit(rcrare(sto7, 11,20, "niche overlap bees")))),
+                (mean(na.omit(rcrare(sto7, 11,20, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(rho8, 20,21, "NODF")))),
+                (mean(na.omit(rcrare(rho8, 20,21, "links per plant species")))),
+                (mean(na.omit(rcrare(rho8, 20,21, "H2")))),
+                (mean(na.omit(rcrare(rho8, 20,21, "modularity")))),
+                (mean(na.omit(rcrare(rho8, 20,21, "niche overlap bees")))),
+                (mean(na.omit(rcrare(rho8, 20,21, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(sto8, 20,21, "NODF")))),
+                (mean(na.omit(rcrare(sto8, 20,21, "links per plant species")))),
+                (mean(na.omit(rcrare(sto8, 20,21, "H2")))),
+                (mean(na.omit(rcrare(sto8, 20,21, "modularity")))),
+                (mean(na.omit(rcrare(sto8, 20,21, "niche overlap bees")))),
+                (mean(na.omit(rcrare(sto8, 20,21, "niche overlap plants")))),
+                
+                #gut/smi  8x15   5x5   19x20
+                
+                (mean(na.omit(rcrare(gut6, 7,14, "NODF")))),
+                (mean(na.omit(rcrare(gut6, 7,14, "links per plant species")))),
+                (mean(na.omit(rcrare(gut6, 7,14, "H2")))),
+                (mean(na.omit(rcrare(gut6, 7,14, "modularity")))),
+                (mean(na.omit(rcrare(gut6, 7,14, "niche overlap bees")))),
+                (mean(na.omit(rcrare(gut6, 7,14, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(smi6, 7,14, "NODF")))),
+                (mean(na.omit(rcrare(smi6, 7,14, "links per plant species")))),
+                (mean(na.omit(rcrare(smi6, 7,14, "H2")))),
+                (mean(na.omit(rcrare(smi6, 7,14, "modularity")))),
+                (mean(na.omit(rcrare(smi6, 7,14, "niche overlap bees")))),
+                (mean(na.omit(rcrare(smi6, 7,14, "niche overlap plants")))),
+                
+                rep(NA, 6),
+                
+                rep(NA, 6),
+
+                (mean(na.omit(rcrare(gut8, 18,19, "NODF")))),
+                (mean(na.omit(rcrare(gut8, 18,19, "links per plant species")))),
+                (mean(na.omit(rcrare(gut8, 18,19, "H2")))),
+                (mean(na.omit(rcrare(gut8, 18,19, "modularity")))),
+                (mean(na.omit(rcrare(gut8, 18,19, "niche overlap bees")))),
+                (mean(na.omit(rcrare(gut8, 18,19, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(smi8, 18,19, "NODF")))),
+                (mean(na.omit(rcrare(smi8, 18,19, "links per plant species")))),
+                (mean(na.omit(rcrare(smi8, 18,19, "H2")))),
+                (mean(na.omit(rcrare(smi8, 18,19, "modularity")))),
+                (mean(na.omit(rcrare(smi8, 18,19, "niche overlap bees")))),
+                (mean(na.omit(rcrare(smi8, 18,19, "niche overlap plants")))),
+                
+                #who/sme  3x16  18x22  14x14
+                
+                rep(NA, 6),
+                
+                rep(NA, 6),
+                
+                (mean(na.omit(rcrare(who7, 17,21, "NODF")))),
+                (mean(na.omit(rcrare(who7, 17,21, "links per plant species")))),
+                (mean(na.omit(rcrare(who7, 17,21, "H2")))),
+                (mean(na.omit(rcrare(who7, 17,21, "modularity")))),
+                (mean(na.omit(rcrare(who7, 17,21, "niche overlap bees")))),
+                (mean(na.omit(rcrare(who7, 17,21, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(sme7, 17,21, "NODF")))),
+                (mean(na.omit(rcrare(sme7, 17,21, "links per plant species")))),
+                (mean(na.omit(rcrare(sme7, 17,21, "H2")))),
+                (mean(na.omit(rcrare(sme7, 17,21, "modularity")))),
+                (mean(na.omit(rcrare(sme7, 17,21, "niche overlap bees")))),
+                (mean(na.omit(rcrare(sme7, 17,21, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(who8, 13,13, "NODF")))),
+                (mean(na.omit(rcrare(who8, 13,13, "links per plant species")))),
+                (mean(na.omit(rcrare(who8, 13,13, "H2")))),
+                (mean(na.omit(rcrare(who8, 13,13, "modularity")))),
+                (mean(na.omit(rcrare(who8, 13,13, "niche overlap bees")))),
+                (mean(na.omit(rcrare(who8, 13,13, "niche overlap plants")))),
+                
+                (mean(na.omit(rcrare(sme8, 13,13, "NODF")))),
+                (mean(na.omit(rcrare(sme8, 13,13, "links per plant species")))),
+                (mean(na.omit(rcrare(sme8, 13,13, "H2")))),
+                (mean(na.omit(rcrare(sme8, 13,13, "modularity")))),
+                (mean(na.omit(rcrare(sme8, 13,13, "niche overlap bees")))),
+                (mean(na.omit(rcrare(sme8, 13,13, "niche overlap plants")))))
+
+avg.site <- c(rep(c(rep("rho", 6), rep("sto", 6)), 3),
+              rep(c(rep("gut", 6), rep("smi", 6)), 3),
+              rep(c(rep("who", 6), rep("sme", 6)), 3))
+
+avg.pair <- c(rep("RHO-STO",36), rep("GUT-SMI",36), rep("WHO-SME",36))
+
+avg.metric <- c(rep(c(rep(c("NODF", "Links per Plant Species", "H2", "Modularity", "Niche Overlap Bees", "Niche Overlap Plants"), 6)), 3))
+
+avg.month <- c(rep(c(rep(6,12), rep(7,12), rep(8,12)), 3))
+
+Treatment <- c(rep(c(rep("Honey Bee", 6), rep("Control",6)),9))
+
+avg.table <- data.frame(avg.values, avg.site, avg.pair, avg.metric, avg.month, Treatment)
+
+#write.csv(avg.table, "avg sitemonth rarefied.csv")
+
+avg.table
+```
+
+```{r}
+#setwd()
+avg.table <- read.csv("avg sitemonth rarefied.csv")
+
+ggplot(avg.table, aes(x = Treatment, y = avg.values, color = as.factor(avg.pair))) + geom_boxplot(aes(group = Treatment)) + geom_point(aes(group = paste(avg.month, avg.pair))) + geom_path(aes(lty = as.factor(avg.month), group = paste(avg.month, avg.pair))) + facet_wrap(~factor(avg.table$avg.metric, levels=c("Network-Level Specialization", "Weighted Nestedness", "Modularity", "Links per Plant Species", "Links per Bee Species", "Niche Overlap Plants", "Niche Overlap Bees")), scales = "free", ncol = 3) + scale_color_viridis_d(alpha = 0.5) + xlab("") + ylab("Average Rarefied Metric Value") + labs(lty = "Month", color = "Site Pair")
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "H2" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "H2" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "NODF" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "NODF" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "Modularity" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "Modularity" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "Links per Plant Species" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "Links per Plant Species" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "Niche Overlap Plants" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "Niche Overlap Plants" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+wilcox.test(subset(avg.table$avg.values, avg.table$avg.metric == "Niche Overlap Bees" & avg.table$Treatment == "Control"),
+       subset(avg.table$avg.values, avg.table$avg.metric == "Niche Overlap Bees" & avg.table$Treatment == "Honey Bee"),
+       paired = TRUE)
+
+```
+##Raw and Rarefied Graphs
+```{r}
+#setwd()
+table <- read.csv("sitemonth network.csv")
+
+tempa <- subset(table, table$net.metric == "Network-Level Specialization")
+a <- ggplot(tempa, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0.2,1.0) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) + scale_color_manual(values = viridis(5)[2:4])  + ggtitle("Network-Level Specialization") 
+
+tempb <- subset(table, table$net.metric == "Weighted Nestedness")
+b <- ggplot(tempb, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0,60) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Weighted Nestedness")
+
+tempc <- subset(table, table$net.metric == "Modularity")
+c <- ggplot(tempc, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Modularity")
+
+tempd <- subset(table, table$net.metric == "Links per Plant Species")
+d <- ggplot(tempd, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0,6.5) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Links per Plant Species")
+
+tempe <- subset(table, table$net.metric == "Niche Overlap Plants")
+e <- ggplot(tempe, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) + ggtitle("Niche Overlap Plant Species")
+
+tempf <- subset(table, table$net.metric == "Niche Overlap Bees")
+f <- ggplot(tempf, aes(x = net.sitetrmt, y = net.values)) + geom_boxplot() + geom_point(size = 2, aes(color = net.pair)) + geom_path(aes(group = paste(net.month, net.pair), lty = as.factor(net.month), color = net.pair)) + xlab("") + ylab("") + ylim(0,0.85) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(legend.position = "none",plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) +  ggtitle("Niche Overlap Bee Species")
+
+grid.arrange(a,b,c,d,e,f, nrow = 2, left = "Raw Metric Values")
+```
+
+```{r}
+#setwd()
+avg.table <- read.csv("avg sitemonth rarefied.csv")
+avg.table$avg.metric = ifelse(avg.table$avg.metric == "NODF", "Weighted Nestedness", avg.table$avg.metric)
+avg.table$avg.metric = ifelse(avg.table$avg.metric == "H2", "Network-Level Specialization", avg.table$avg.metric)
+
+tempa <- subset(avg.table, avg.table$avg.metric == "Network-Level Specialization")
+g <- ggplot(tempa, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0.2,1.0) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Network-Level Specialization") 
+
+tempb <- subset(avg.table, avg.table$avg.metric == "Weighted Nestedness")
+h <- ggplot(tempb, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0,60) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Weighted Nestedness")
+
+tempc <- subset(avg.table, avg.table$avg.metric == "Modularity")
+i <- ggplot(tempc, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Modularity")
+
+tempd <- subset(avg.table, avg.table$avg.metric == "Links per Plant Species")
+j <- ggplot(tempd, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0,6.5) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + ggtitle("Links per Plant Species")
+
+tempe <- subset(avg.table, avg.table$avg.metric == "Niche Overlap Plants")
+k <- ggplot(tempe, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11),axis.text = element_text(size = 10))+ ggtitle("Niche Overlap Plant Species")
+
+avg.table$avg.pair = ifelse(avg.table$avg.pair == "GUT-SMI", "GUT-SMI", avg.table$avg.pair)
+tempf <- subset(avg.table, avg.table$avg.metric == "Niche Overlap Bees")
+l <- ggplot(tempf, aes(x = Treatment, y = avg.values)) + geom_boxplot() + geom_point(size = 2, aes(color = avg.pair)) + geom_path(aes(group = paste(avg.month, avg.pair), lty = as.factor(avg.month), color = avg.pair)) + xlab("") + ylab("") + ylim(0,0.85) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10), legend.position = "none") + ggtitle("Niche Overlap Bee Species") + labs(color = "Site Pair", lty = "Month")
+
+grid.arrange(g,h,i,j,k,l, nrow = 2, left = "Average Rarefied Metric Values")
+
+avg.table
+```
+
+
+
+```{r}
+#setwd("")
+table <- read.csv("sitemonth network.csv")
+
+tempa <- subset(table, table$net.metric == "Network-Level Specialization")
+a <- ggplot(tempa, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0.2,1.0) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) + scale_color_manual(values = viridis(5)[2:4]) + scale_fill_manual(values = c("#C488CE", "#FFF07D")) + ggtitle("Network-Level Specialization") 
+
+tempb <- subset(table, table$net.metric == "Weighted Nestedness")
+b <- ggplot(tempb, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0,60) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + scale_fill_manual(values = c("#C488CE", "#FFF07D"))+ ggtitle("Weighted Nestedness")
+
+tempc <- subset(table, table$net.metric == "Modularity")
+c <- ggplot(tempc, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + scale_fill_manual(values = c("#C488CE", "#FFF07D"))+ ggtitle("Modularity")
+
+tempd <- subset(table, table$net.metric == "Links per Plant Species")
+d <- ggplot(tempd, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0,6.5) + theme_bw() + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10))+ scale_color_manual(values = viridis(5)[2:4]) + scale_fill_manual(values = c("#C488CE", "#FFF07D"))+ ggtitle("Links per Plant Species")
+
+tempe <- subset(table, table$net.metric == "Niche Overlap Plants")
+e <- ggplot(tempe, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0,0.75) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) + scale_fill_manual(values = c("#C488CE", "#FFF07D"))+ ggtitle("Niche Overlap Plant Species")
+
+tempf <- subset(table, table$net.metric == "Niche Overlap Bees")
+f <- ggplot(tempf, aes(x = net.sitetrmt, y = net.values, fill = net.sitetrmt)) + geom_boxplot() + xlab("") + ylab("") + ylim(0,0.85) + theme_bw() + scale_color_manual(values = viridis(5)[2:4]) + theme(legend.position = "none",plot.title = element_text(hjust = 0.5, size = 11), axis.text = element_text(size = 10)) + scale_fill_manual(values = c("#C488CE", "#FFF07D"))+ ggtitle("Niche Overlap Bee Species")
+
+grid.arrange(a,b,c,d,e,f, nrow = 2, left = "Raw Metric Values")
+```
